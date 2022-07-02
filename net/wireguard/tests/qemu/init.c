@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <sys/wait.h>
 #include <sys/mount.h>
 #include <sys/types.h>
@@ -59,22 +58,19 @@ static void print_banner(void)
 
 static void seed_rng(void)
 {
-	struct pollfd fd = { .events = POLLOUT | POLLIN };
-	int bits = 4096;
-	if (mknod("/dev/random", S_IFCHR | 0644, makedev(1, 8)))
-		panic("mknod(/dev/random)");
-	fd.fd = open("/dev/random", O_WRONLY);
-	if (fd.fd < 0)
+	int bits = 4096, fd;
+
+	pretty_message("[+] Fake seeding RNG...");
+	fd = open("/dev/random", O_WRONLY);
+	if (fd < 0)
 		panic("open(random)");
 	for (;;) {
-		if (poll(&fd, 1, -1) < 0)
-			panic("poll(random)");
-		if (!(fd.revents & POLLOUT) || (fd.revents & POLLIN))
+		if (!getrandom(NULL, 0, GRND_NONBLOCK) || errno == ENOSYS)
 			break;
-		if (ioctl(fd.fd, RNDADDTOENTCNT, &bits) < 0)
+		if (ioctl(fd, RNDADDTOENTCNT, &bits) < 0)
 			panic("ioctl(RNDADDTOENTCNT)");
 	}
-	close(fd.fd);
+	close(fd);
 }
 
 static void mount_filesystems(void)
@@ -118,12 +114,6 @@ static void enable_logging(void)
 	if (fd >= 0) {
 		if (write(fd, "1\n", 2) != 2)
 			panic("write(exception-trace)");
-		close(fd);
-	}
-	fd = open("/proc/sys/kernel/panic_on_warn", O_WRONLY);
-	if (fd >= 0) {
-		if (write(fd, "1\n", 2) != 2)
-			panic("write(panic_on_warn)");
 		close(fd);
 	}
 }
@@ -268,10 +258,10 @@ static void check_leaks(void)
 
 int main(int argc, char *argv[])
 {
-	seed_rng();
 	ensure_console();
 	print_banner();
 	mount_filesystems();
+	seed_rng();
 	kmod_selftests();
 	enable_logging();
 	clear_leaks();
