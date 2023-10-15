@@ -202,15 +202,13 @@ EXPORT_SYMBOL_GPL(bpf_verifier_log_write);
  */
 static __printf(1, 2) void verbose(const char *fmt, ...)
 {
-	struct bpf_verifier_log *log = &verifier_log;
 	va_list args;
 
-	if (!log->level || bpf_verifier_log_full(log))
+	if (!bpf_verifier_log_needed(&verifier_log))
 		return;
 
 	va_start(args, fmt);
-	log->len_used += vscnprintf(log->kbuf + log->len_used,
-				    log->len_total - log->len_used, fmt, args);
+	bpf_verifier_vlog(&verifier_log, fmt, args);
 	va_end(args);
 }
 
@@ -5200,9 +5198,6 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 			goto err_unlock;
 
 		ret = -ENOMEM;
-		log->kbuf = vmalloc(log->len_total);
-		if (!log->kbuf)
-			goto err_unlock;
 	} else {
 		log->level = 0;
 	}
@@ -5255,14 +5250,10 @@ skip_full_check:
 		ret = fixup_bpf_calls(env);
 
 	if (log->level && bpf_verifier_log_full(log)) {
-		BUG_ON(log->len_used >= log->len_total);
-		/* verifier log exceeded user supplied buffer */
 		ret = -ENOSPC;
 	}
 
-	/* copy verifier log back to user space including trailing zero */
-	if (log->level && copy_to_user(log->ubuf, log->kbuf,
-				       log->len_used + 1) != 0) {
+	if (log->level && !log->ubuf) {
 		ret = -EFAULT;
 		goto err_release_maps;
 	}
@@ -5288,9 +5279,7 @@ skip_full_check:
 		convert_pseudo_ld_imm64(env);
 	}
 
-free_log_buf:
-	if (log->level)
-		vfree(log->kbuf);
+err_release_maps:
 	if (!env->prog->aux->used_maps)
 		/* if we didn't copy map pointers into bpf_prog_info, release
 		 * them now. Otherwise free_used_maps() will release them.
