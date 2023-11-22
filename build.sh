@@ -16,7 +16,7 @@ export LOCALVERSION
 
 if ! [ -d "${CLANG_DIR}" ]; then
 echo "Clang not found! Cloning to ${TC_DIR}..."
-if ! git clone --depth=1 -b main https://gitlab.com/Panchajanya1999/azure-clang ${CLANG_DIR}; then
+if ! git clone --depth=1 -b main https://github.com/neophyte721/neophyte-clang ${CLANG_DIR}; then
 echo "Cloning failed! Aborting..."
 exit 1
 fi
