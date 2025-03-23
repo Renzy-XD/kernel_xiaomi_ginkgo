@@ -46,8 +46,7 @@ enum input_boost_type {
 static DEFINE_PER_CPU(struct cpu_sync, sync_info);
 
 static struct kthread_work input_boost_work;
-
-static struct work_struct powerkey_input_boost_work;
+static struct kthread_work powerkey_input_boost_work;
 static bool input_boost_enabled;
 
 static unsigned int input_boost_ms = 40;
@@ -286,7 +285,7 @@ static void do_input_boost(struct kthread_work *work)
 	schedule_delayed_work(&input_boost_rem, msecs_to_jiffies(input_boost_ms));
 }
 
-static void do_powerkey_input_boost(struct work_struct *work)
+static void do_powerkey_input_boost(struct kthread_work *work)
 {
 	unsigned int i, ret;
 	struct cpu_sync *i_sync_info;
@@ -317,8 +316,7 @@ static void do_powerkey_input_boost(struct work_struct *work)
 			sched_boost_active = true;
 	}
 
-	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
-				msecs_to_jiffies(powerkey_input_boost_ms));
+	schedule_delayed_work(&input_boost_rem, msecs_to_jiffies(powerkey_input_boost_ms));
 }
 
 static void cpuboost_input_event(struct input_handle *handle,
@@ -337,7 +335,7 @@ static void cpuboost_input_event(struct input_handle *handle,
 		return;
 
 	if (type == EV_KEY && code == KEY_POWER)
-		queue_work(cpu_boost_wq, &powerkey_input_boost_work);
+		kthread_queue_work(&cpu_boost_worker, &powerkey_input_boost_work);
 	else
 		kthread_queue_work(&cpu_boost_worker, &input_boost_work);
 
@@ -447,7 +445,7 @@ static int cpu_boost_init(void)
 	wake_up_process(cpu_boost_worker_thread);
 
 	kthread_init_work(&input_boost_work, do_input_boost);
-	INIT_WORK(&powerkey_input_boost_work, do_powerkey_input_boost);
+    kthread_init_work(&powerkey_input_boost_work, do_powerkey_input_boost);
 	INIT_DELAYED_WORK(&input_boost_rem, do_input_boost_rem);
 
 	for_each_possible_cpu(cpu) {
