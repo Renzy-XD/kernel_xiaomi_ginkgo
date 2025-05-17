@@ -90,11 +90,16 @@ walt_dec_cfs_rq_stats(struct cfs_rq *cfs_rq, struct task_struct *p) {}
  * (to see the precise effective timeslice length of your workload,
  *  run vmstat and monitor the context-switches (cs) field)
  *
- * (default: 6ms * (1 + ilog(ncpus)), units: nanoseconds)
+ * (BORE default: 24ms constant, units: nanoseconds)
+ * (CFS  default: 6ms * (1 + ilog(ncpus)), units: nanoseconds)
  */
+#ifdef CONFIG_SCHED_BORE
+unsigned int sysctl_sched_latency			= 24000000ULL;
+static unsigned int normalized_sysctl_sched_latency	= 24000000ULL;
+#else // CONFIG_SCHED_BORE
 unsigned int sysctl_sched_latency			= 6000000ULL;
 unsigned int normalized_sysctl_sched_latency		= 6000000ULL;
-
+#endif // CONFIG_SCHED_BORE
 /*
  * Enable/disable honoring sync flag in energy-aware wakeups.
  */
@@ -113,18 +118,27 @@ unsigned int sysctl_sched_cstate_aware = 1;
  *   SCHED_TUNABLESCALING_LOG - scaled logarithmical, *1+ilog(ncpus)
  *   SCHED_TUNABLESCALING_LINEAR - scaled linear, *ncpus
  *
- * (default SCHED_TUNABLESCALING_LOG = *(1+ilog(ncpus))
+ * (BORE default SCHED_TUNABLESCALING_NONE = *1 constant)
+ * (CFS  default SCHED_TUNABLESCALING_LOG  = *(1+ilog(ncpus))
  */
+#ifdef CONFIG_SCHED_BORE
+enum sched_tunable_scaling sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
+#else // CONFIG_SCHED_BORE
 enum sched_tunable_scaling sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_LOG;
-
+#endif // CONFIG_SCHED_BORE
 /*
  * Minimal preemption granularity for CPU-bound tasks:
  *
- * (default: 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds)
+ * (BORE default: 3 msec constant, units: nanoseconds)
+ * (CFS  default: 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds)
  */
-unsigned int sysctl_sched_min_granularity		= 750000ULL;
+#ifdef CONFIG_SCHED_BORE
+unsigned int sysctl_sched_min_granularity			= 3000000ULL;
+unsigned int normalized_sysctl_sched_min_granularity	= 3000000ULL;
+#else // CONFIG_SCHED_BORE
+unsigned int sysctl_sched_min_granularity			= 750000ULL;
 unsigned int normalized_sysctl_sched_min_granularity	= 750000ULL;
-
+#endif // CONFIG_SCHED_BORE
 /*
  * This value is kept at sysctl_sched_latency/sysctl_sched_min_granularity
  */
@@ -149,9 +163,16 @@ unsigned int __read_mostly sysctl_sched_energy_aware = 1;
  * have immediate wakeup/sleep latencies.
  *
  * (default: 1 msec * (1 + ilog(ncpus)), units: nanoseconds)
+ * (BORE default: 4 msec constant, units: nanoseconds)
+ * (CFS  default: 1 msec * (1 + ilog(ncpus)), units: nanoseconds)
  */
-unsigned int sysctl_sched_wakeup_granularity		= 1000000UL;
+#ifdef CONFIG_SCHED_BORE
+unsigned int sysctl_sched_wakeup_granularity			= 4000000UL;
+unsigned int normalized_sysctl_sched_wakeup_granularity	= 4000000UL;
+#else // CONFIG_SCHED_BORE
+unsigned int sysctl_sched_wakeup_granularity			= 1000000UL;
 unsigned int normalized_sysctl_sched_wakeup_granularity	= 1000000UL;
+#endif // CONFIG_SCHED_BORE
 
 const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
 DEFINE_PER_CPU_READ_MOSTLY(int, sched_load_boost);
@@ -163,17 +184,9 @@ __read_mostly unsigned int sysctl_sched_walt_cpu_high_irqload =
     (10 * NSEC_PER_MSEC);
 #endif
 
-/* An entity is a task if it doesn't "own" a runqueue */
-#define entity_is_task(se)	(!se->my_q)
-
-static inline struct task_struct *task_of(struct sched_entity *se)
-{
-	SCHED_WARN_ON(!entity_is_task(se));
-	return container_of(se, struct task_struct, se);
-}
-
 #ifdef CONFIG_SCHED_BORE
 uint __read_mostly sched_bore                   = 1;
+uint __read_mostly sched_burst_score_rounding   = 0;
 uint __read_mostly sched_burst_smoothness_long  = 1;
 uint __read_mostly sched_burst_smoothness_short = 1;
 uint __read_mostly sched_burst_fork_atavistic   = 2;
@@ -206,16 +219,9 @@ static inline u64 scale_slice(u64 delta, struct sched_entity *se) {
 }
 
 static void update_burst_score(struct sched_entity *se) {
-	if (!entity_is_task(se)) return;
-	struct task_struct *p = task_of(se);
-	u8 prio = p->static_prio - MAX_RT_PRIO;
-	u8 prev_prio = min(39, prio + se->burst_score);
-
-	se->burst_score = se->burst_penalty >> 2;
-
-	u8 new_prio = min(39, prio + se->burst_score);
-	if (new_prio != prev_prio)
-	 	reweight_task(p, new_prio);
+	u32 penalty = se->burst_penalty;
+	if (sched_burst_score_rounding) penalty += 0x2U;
+	se->burst_score = penalty >> 2;
 }
 
 static void update_burst_penalty(struct sched_entity *se) {
@@ -427,6 +433,15 @@ static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 	return cfs_rq->rq;
 }
 
+/* An entity is a task if it doesn't "own" a runqueue */
+#define entity_is_task(se)	(!se->my_q)
+
+static inline struct task_struct *task_of(struct sched_entity *se)
+{
+	SCHED_WARN_ON(!entity_is_task(se));
+	return container_of(se, struct task_struct, se);
+}
+
 /* Walk up scheduling entities hierarchy */
 #define for_each_sched_entity(se) \
 		for (; se; se = se->parent)
@@ -571,10 +586,17 @@ find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 
 #else	/* !CONFIG_FAIR_GROUP_SCHED */
 
+static inline struct task_struct *task_of(struct sched_entity *se)
+{
+	return container_of(se, struct task_struct, se);
+}
+
 static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 {
 	return container_of(cfs_rq, struct rq, cfs);
 }
+
+#define entity_is_task(se)	1
 
 #define for_each_sched_entity(se) \
 		for (; se; se = NULL)
@@ -788,6 +810,10 @@ static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
 {
 	if (unlikely(se->load.weight != NICE_0_LOAD))
 		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
+
+#ifdef CONFIG_SCHED_BORE
+	if (likely(sched_bore)) delta = scale_slice(delta, se);
+#endif // CONFIG_SCHED_BORE
 	return delta;
 }
 
@@ -5449,17 +5475,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (p->in_iowait)
 		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
 
-#ifdef CONFIG_SCHED_BORE
-	int task_sleep = flags & DEQUEUE_SLEEP;
-	
-	if (task_sleep) {
-		cfs_rq = cfs_rq_of(se);
-		if (cfs_rq->curr == se)
-			update_curr(cfs_rq);
-		restart_burst(se);
-	}
-#endif // CONFIG_SCHED_BORE
-
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
@@ -5525,6 +5540,15 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 * current task is not more accounted for in the selection of the OPP.
 	 */
 	schedtune_dequeue_task(p, cpu_of(rq));
+
+#ifdef CONFIG_SCHED_BORE
+	if (task_sleep) {
+		cfs_rq = cfs_rq_of(se);
+		if (cfs_rq->curr == se)
+			update_curr(cfs_rq);
+		restart_burst(se);
+	}
+#endif // CONFIG_SCHED_BORE
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -8975,27 +8999,22 @@ static void yield_task_fair(struct rq *rq)
 	/*
 	 * Are we the only task in the tree?
 	 */
-	#if !defined(CONFIG_SCHED_BORE)
+#if !defined(CONFIG_SCHED_BORE)
 	if (unlikely(rq->nr_running == 1))
 		return;
-
-	clear_buddies(cfs_rq, se);
-	#endif // CONFIG_SCHED_BORE
+#endif // CONFIG_SCHED_BORE
 
 	update_rq_clock(rq);
 	/*
-	* Update run-time statistics of the 'current'.
-	*/
+	 * Update run-time statistics of the 'current'.
+	 */
 	update_curr(cfs_rq);
-
-	#ifdef CONFIG_SCHED_BORE
-		restart_burst(se);
-		if (unlikely(rq->nr_running == 1))
-			return;
-
-		clear_buddies(cfs_rq, se);
-	#endif // CONFIG_SCHED_BORE
-
+#ifdef CONFIG_SCHED_BORE
+	restart_burst(se);
+	if (unlikely(rq->nr_running == 1))
+		return;
+#endif // CONFIG_SCHED_BORE
+	clear_buddies(cfs_rq, se);
 	/*
 	 * Tell update_rq_clock() that we've just updated,
 	 * so we don't do microscopic update in schedule()
@@ -12380,9 +12399,6 @@ static void task_fork_fair(struct task_struct *p)
 		update_curr(cfs_rq);
 		se->vruntime = curr->vruntime;
 	}
-#ifdef CONFIG_SCHED_BORE
-	update_burst_score(se);
-#endif // CONFIG_SCHED_BORE
 	place_entity(cfs_rq, se, 1);
 
 	if (sysctl_sched_child_runs_first && curr && entity_before(curr, se)) {
