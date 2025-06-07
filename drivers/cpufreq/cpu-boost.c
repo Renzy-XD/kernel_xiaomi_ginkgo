@@ -52,7 +52,7 @@ static bool input_boost_enabled;
 static unsigned int input_boost_ms = 40;
 module_param(input_boost_ms, uint, 0644);
 
-static unsigned int powerkey_input_boost_ms = 400;
+static unsigned int powerkey_input_boost_ms = 750;
 module_param(powerkey_input_boost_ms, uint, 0644);
 
 static unsigned int sched_boost_on_input;
@@ -452,7 +452,19 @@ static int cpu_boost_init(void)
 	for_each_possible_cpu(cpu) {
 		s = &per_cpu(sync_info, cpu);
 		s->cpu = cpu;
+		/* Set default powerkey boost frequencies for trinket */
+		if (cpu <= 3) {
+			/* Little cluster (CPU 0-3): 1804 MHz */
+			s->powerkey_input_boost_freq = 1804800;
+		} else {
+			/* Big cluster (CPU 4-7): 2016 MHz */
+			s->powerkey_input_boost_freq = 2016000;
+		}
 	}
+
+	/* Enable input boost since we have default powerkey frequencies set */
+	input_boost_enabled = true;
+
 	cpufreq_register_notifier(&boost_adjust_nb, CPUFREQ_POLICY_NOTIFIER);
 
 	ret = input_register_handler(&cpuboost_input_handler);
