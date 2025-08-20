@@ -5193,7 +5193,7 @@ static void kgsl_core_exit(void)
 static int __init kgsl_core_init(void)
 {
 	int result = 0;
-	struct sched_param param = { .sched_priority = 16 };
+	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO - 1 };
 
 	place_marker("M - DRIVER KGSL Init");
 
