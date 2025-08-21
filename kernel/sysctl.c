@@ -356,7 +356,7 @@ int dummy_sched_boost_handler(struct ctl_table *table, int write,
 
 static struct ctl_table kern_table[] = {
 	{
-		.procname	= "sched_child_runs_first_nosys",
+		.procname	= "sched_child_runs_first",
 		.data		= &sysctl_sched_child_runs_first,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
@@ -1561,7 +1561,7 @@ static struct ctl_table vm_table[] = {
 		.extra1		= &zero,
 	},
 	{
-		.procname	= "dirty_background_ratio_nosys",
+		.procname	= "dirty_background_ratio",
 		.data		= &dirty_background_ratio,
 		.maxlen		= sizeof(dirty_background_ratio),
 		.mode		= 0644,
@@ -1602,7 +1602,7 @@ static struct ctl_table vm_table[] = {
 		.proc_handler	= dirty_writeback_centisecs_handler,
 	},
 	{
-		.procname	= "dirty_expire_centisecs_nosys",
+		.procname	= "dirty_expire_centisecs",
 		.data		= &dirty_expire_interval,
 		.maxlen		= sizeof(dirty_expire_interval),
 		.mode		= 0644,
@@ -1623,7 +1623,7 @@ static struct ctl_table vm_table[] = {
 		.proc_handler   = pdflush_proc_obsolete,
 	},
 	{
-		.procname	= "swappiness_nosys",
+		.procname	= "swappiness",
 		.data		= &vm_swappiness,
 		.maxlen		= sizeof(vm_swappiness),
 		.mode		= 0644,
