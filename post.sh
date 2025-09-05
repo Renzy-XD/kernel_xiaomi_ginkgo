@@ -2,7 +2,7 @@
 # Edit by Renzy
 
 case "$1" in
-    -k) VARIANT="KSU" ;;
+    -k) VARIANT="SukiSU" ;;
     -v) VARIANT="Vanilla" ;;
     *) VARIANT="Vanilla" ;;
 esac
