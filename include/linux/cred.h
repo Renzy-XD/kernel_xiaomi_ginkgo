@@ -29,7 +29,6 @@ struct inode;
  */
 struct group_info {
 	atomic_t	usage;
-	u32 _padding; // Fix for https://github.com/bmax121/APatch/issues/400
 	int		ngroups;
 	kgid_t		gid[0];
 } __randomize_layout;
@@ -252,17 +251,6 @@ static inline const struct cred *get_cred(const struct cred *cred)
 	validate_creds(cred);
 	nonconst_cred->non_rcu = 0;
 	return get_new_cred(nonconst_cred);
-}
-
-static inline const struct cred *get_cred_rcu(const struct cred *cred)
-{
-	struct cred *nonconst_cred = (struct cred *) cred;
-	if (!cred)
-		return NULL;
-	if (!atomic_long_inc_not_zero(&nonconst_cred->usage))
-		return NULL;
-	validate_creds(cred);
-	return cred;
 }
 
 /**
