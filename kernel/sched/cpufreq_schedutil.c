@@ -803,9 +803,9 @@ static int sugov_init(struct cpufreq_policy *policy)
 	}
 
 	tunables->up_rate_limit_us =
-				cpufreq_policy_transition_delay_us(policy);
+				500;
 	tunables->down_rate_limit_us =
-				cpufreq_policy_transition_delay_us(policy);
+				2000;
 
 	tunables->iowait_boost_enable = false;
 
