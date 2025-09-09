@@ -263,15 +263,10 @@ int update_devfreq(struct devfreq *devfreq)
 	if (!devfreq->governor)
 		return -EINVAL;
 
-	if (devfreq->max_boost) {
-		/* Use the max freq for max boosts */
-		freq = ULONG_MAX;
-	} else {
-		/* Reevaluate the proper frequency */
-		err = devfreq->governor->get_target_freq(devfreq, &freq);
-		if (err)
-			return err;
-	}
+	/* Reevaluate the proper frequency */
+	err = devfreq->governor->get_target_freq(devfreq, &freq);
+	if (err)
+		return err;
 
 	/*
 	 * Adjust the frequency with user freq and QoS.
@@ -703,7 +698,7 @@ struct devfreq *devm_devfreq_add_device(struct device *dev,
 	devfreq = devfreq_add_device(dev, profile, governor_name, data);
 	if (IS_ERR(devfreq)) {
 		devres_free(ptr);
-		return ERR_PTR(-ENOMEM);
+		return devfreq;
 	}
 
 	*ptr = devfreq;
@@ -1040,9 +1035,6 @@ static ssize_t available_governors_show(struct device *d,
 	struct devfreq *df = to_devfreq(d);
 	ssize_t count = 0;
 
-	if (strstr(dev_name(df->dev.parent), "kgsl"))
-		return sprintf(buf, "%s\n", "msm-adreno-tz powersave performance");
-
 	mutex_lock(&devfreq_list_lock);
 
 	/*
@@ -1137,10 +1129,6 @@ static ssize_t min_freq_store(struct device *dev, struct device_attribute *attr,
 	unsigned long value;
 	int ret;
 	unsigned long max;
-
-	/* Minfreq is managed by devfreq_boost */
-	if (df->is_boost_device)
-		return count;
 
 	ret = sscanf(buf, "%lu", &value);
 	if (ret != 1)
