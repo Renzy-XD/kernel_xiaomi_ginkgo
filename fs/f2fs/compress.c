@@ -335,8 +335,8 @@ static int zstd_init_compress_ctx(struct compress_ctx *cc)
 	if (!level)
 		level = F2FS_ZSTD_DEFAULT_CLEVEL;
 
-	params = zstd_get_params(F2FS_ZSTD_DEFAULT_CLEVEL, cc->rlen, 0);
-	workspace_size = zstd_cstream_workspace_bound(params.cParams);
+	params = zstd_get_params(F2FS_ZSTD_DEFAULT_CLEVEL, cc->rlen);
+	workspace_size = zstd_cstream_workspace_bound(&params.cParams);
 
 	workspace = f2fs_kvmalloc(F2FS_I_SB(cc->inode),
 					workspace_size, GFP_NOFS);
@@ -415,18 +415,12 @@ static int zstd_init_decompress_ctx(struct decompress_io_ctx *dic)
 	zstd_dstream *stream;
 	void *workspace;
 	unsigned int workspace_size;
-	unsigned int max_window_size =
-			MAX_COMPRESS_WINDOW_SIZE(dic->log_cluster_size);
-
-	workspace_size = zstd_dstream_workspace_bound(MAX_COMPRESS_WINDOW_SIZE);
 
 	workspace = f2fs_kvmalloc(F2FS_I_SB(dic->inode),
 					workspace_size, GFP_NOFS);
 	if (!workspace)
 		return -ENOMEM;
 
-	stream = zstd_init_dstream(MAX_COMPRESS_WINDOW_SIZE,
-					workspace, workspace_size);
 	if (!stream) {
 		printk_ratelimited("%sF2FS-fs (%s): %s zstd_init_dstream failed\n",
 				KERN_ERR, F2FS_I_SB(dic->inode)->sb->s_id,
